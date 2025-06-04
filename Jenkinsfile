@@ -1,42 +1,18 @@
 pipeline {
     agent any
-    
     environment {
-        SERVICE = 'exchange'
+        SERVICE = 'gateway'
         NAME = "iancdesponds/${env.SERVICE}"
-        REGISTRY_CREDENTIALS = 'dockerhub-credentials'
     }
-    
     stages {
-        stage('Install Dependencies') {
+ 
+        stage('Build & Push Image') {
             steps {
-                script {
-                    sh '''
-                        python3 --version || echo "Python not found"
-                        pip3 --version || echo "Pip not found"
-                        
-                        # Se existir requirements.txt, instalar dependências
-                        if [ -f "requirements.txt" ]; then
-                            pip3 install -r requirements.txt || echo "Failed to install requirements"
-                        fi
-                    '''
-                }
-            }
-        }        
-        stage('Build & Push Docker Image') {
-            steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: env.REGISTRY_CREDENTIALS, 
-                                                   usernameVariable: 'USERNAME', 
-                                                   passwordVariable: 'TOKEN')]) {
-                        sh """
-                            docker login -u \$USERNAME -p \$TOKEN
-                            docker build -t ${env.NAME}:latest .
-                            docker build -t ${env.NAME}:${env.BUILD_NUMBER} .
-                            docker push ${env.NAME}:latest
-                            docker push ${env.NAME}:${env.BUILD_NUMBER}
-                        """
-                    }
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credential', usernameVariable: 'USERNAME', passwordVariable: 'TOKEN')]) {
+                    sh "docker login -u $USERNAME -p $TOKEN"
+                    sh "docker buildx create --use --platform=linux/arm64,linux/amd64 --node multi-platform-builder-${env.SERVICE} --name multi-platform-builder-${env.SERVICE}"
+                    sh "docker buildx build --platform=linux/arm64,linux/amd64 --push --tag ${env.NAME}:latest --tag ${env.NAME}:${env.BUILD_ID} -f Dockerfile ."
+                    sh "docker buildx rm --force multi-platform-builder-${env.SERVICE}"
                 }
             }
         }
